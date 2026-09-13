@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Calendrier BMEO – V2</title>
+  <title>Calendrier BMEO – V3</title>
 
   <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.19/index.global.min.js"></script>
@@ -144,7 +144,7 @@
       line-height: 1.22;
       padding: 4px 6px;
       overflow: hidden;
-      min-height: 30px;
+      min-height: 34px;
       color:#253047;
     }
 
@@ -156,8 +156,9 @@
     }
 
     .event-description {
-      margin-top: 2px;
-      font-size: 9.8px;
+      margin-top: 3px;
+      font-size: 11.5px;
+      font-weight: 650;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -238,6 +239,52 @@
       display:none;
     }
 
+
+    .multi-options {
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      padding:8px;
+      border:1px solid var(--border);
+      border-radius:10px;
+      background:#fff;
+    }
+
+    .person-chip {
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:7px 9px;
+      border:1px solid #e4e7ec;
+      border-radius:999px;
+      background:#f9fafb;
+      font-size:12px;
+      cursor:pointer;
+      user-select:none;
+    }
+
+    .person-chip input {
+      margin:0;
+      width:auto;
+      box-shadow:none;
+    }
+
+    .edit-note {
+      font-size:11px;
+      color:var(--muted);
+      margin-top:4px;
+    }
+
+    .modal select {
+      width:100%;
+      min-width:0;
+    }
+
+    .modal input[type="checkbox"] {
+      width:auto;
+      box-shadow:none;
+    }
+
     @media (max-width: 700px) {
       .grid { grid-template-columns:1fr; }
       .field.full { grid-column:auto; }
@@ -275,9 +322,60 @@
 <div id="detailBackdrop" class="modal-backdrop">
   <div class="modal">
     <h2>Détail de l’événement</h2>
-    <div id="detailContent"></div>
+
+    <div class="grid">
+      <div class="field">
+        <label>Service</label>
+        <select id="editService"></select>
+      </div>
+
+      <div class="field">
+        <label>Assigné</label>
+        <div id="editAssigneeOptions" class="multi-options"></div>
+      </div>
+
+      <div class="field">
+        <label>Domaine</label>
+        <select id="editDomain"></select>
+      </div>
+
+      <div class="field">
+        <label>Statut</label>
+        <select id="editStatus"></select>
+      </div>
+
+      <div class="field">
+        <label>Date de début</label>
+        <input id="editStart" type="date" />
+      </div>
+
+      <div class="field">
+        <label>Date d’échéance</label>
+        <input id="editEnd" type="date" />
+      </div>
+
+      <div class="field full">
+        <label>Description</label>
+        <textarea id="editDescription"></textarea>
+      </div>
+
+      <div class="field full">
+        <label>Commentaire</label>
+        <textarea id="editComment"></textarea>
+      </div>
+
+      <div class="field full">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#344054">
+          <input id="editEvent" type="checkbox" />
+          Afficher cette action dans le calendrier
+        </label>
+        <div class="edit-note">Les modifications sont enregistrées directement dans « Toutes les actions BMEO ».</div>
+      </div>
+    </div>
+
     <div class="actions">
-      <button id="closeDetail">Fermer</button>
+      <button id="closeDetail">Annuler</button>
+      <button id="saveDetail" class="primary">Enregistrer dans Grist</button>
     </div>
   </div>
 </div>
@@ -288,22 +386,22 @@
     <div class="grid">
       <div class="field">
         <label>Service</label>
-        <input id="newService" placeholder="Ex. SDIS 03" />
+        <select id="newService"></select>
       </div>
 
       <div class="field">
         <label>Assigné</label>
-        <input id="newAssignee" placeholder="Ex. Malik" />
+        <div id="newAssigneeOptions" class="multi-options"></div>
       </div>
 
       <div class="field">
         <label>Domaine</label>
-        <input id="newDomain" placeholder="Ex. Raccordement RIE" />
+        <select id="newDomain"></select>
       </div>
 
       <div class="field">
         <label>Statut (optionnel)</label>
-        <input id="newStatus" />
+        <select id="newStatus"></select>
       </div>
 
       <div class="field">
@@ -358,6 +456,9 @@
   let mappedRecords = [];
   let lastMappings = null;
   let calendar = null;
+  let currentDetailRowId = null;
+
+  const TEAM_ASSIGNEES = ["David", "Yvan", "Stéphane", "Franck", "Mohamed"];
 
   const $ = id => document.getElementById(id);
 
@@ -458,6 +559,77 @@
     return ["true","vrai","1","yes","oui"].includes(s);
   }
 
+
+  function splitAssignees(value) {
+    const text = displayValue(value);
+    if (!text) return [];
+    return text
+      .split(/[,;|]/)
+      .map(v => v.trim())
+      .filter(Boolean);
+  }
+
+  function hasAssignee(value, person) {
+    if (!person) return true;
+    const target = person.trim().toLocaleLowerCase("fr");
+    return splitAssignees(value).some(name => name.toLocaleLowerCase("fr") === target);
+  }
+
+  function uniqueValues(field) {
+    return [...new Set(
+      mappedRecords.map(r => displayValue(r[field]).trim()).filter(Boolean)
+    )].sort((a,b) => a.localeCompare(b, "fr", {sensitivity:"base"}));
+  }
+
+  function fillSelect(id, values, selected="", emptyLabel="— Sélectionner —") {
+    const el = $(id);
+    el.innerHTML =
+      `<option value="">${escapeHtml(emptyLabel)}</option>` +
+      values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+    if (selected && values.includes(selected)) el.value = selected;
+    else if (selected) {
+      el.insertAdjacentHTML("beforeend", `<option value="${escapeHtml(selected)}">${escapeHtml(selected)}</option>`);
+      el.value = selected;
+    }
+  }
+
+  function renderAssigneeChoices(containerId, selectedNames=[]) {
+    const selected = new Set(selectedNames.map(v => v.toLocaleLowerCase("fr")));
+    $(containerId).innerHTML = TEAM_ASSIGNEES.map(name => `
+      <label class="person-chip">
+        <input type="checkbox" value="${escapeHtml(name)}" ${selected.has(name.toLocaleLowerCase("fr")) ? "checked" : ""}>
+        ${escapeHtml(name)}
+      </label>
+    `).join("");
+  }
+
+  function selectedAssignees(containerId) {
+    return [...$(containerId).querySelectorAll('input[type="checkbox"]:checked')]
+      .map(el => el.value);
+  }
+
+  function refreshFormLists() {
+    const services = uniqueValues("Service");
+    const domains = uniqueValues("Domaine");
+    const statuses = uniqueValues("Statut");
+
+    // Creation form
+    const newServiceCurrent = $("newService")?.value || "";
+    const newDomainCurrent = $("newDomain")?.value || "";
+    const newStatusCurrent = $("newStatus")?.value || "";
+    fillSelect("newService", services, newServiceCurrent, "Choisir un service");
+    fillSelect("newDomain", domains, newDomainCurrent, "Choisir un domaine");
+    fillSelect("newStatus", statuses, newStatusCurrent, "Choisir un statut");
+
+    // Edit form
+    const editServiceCurrent = $("editService")?.value || "";
+    const editDomainCurrent = $("editDomain")?.value || "";
+    const editStatusCurrent = $("editStatus")?.value || "";
+    fillSelect("editService", services, editServiceCurrent, "Choisir un service");
+    fillSelect("editDomain", domains, editDomainCurrent, "Choisir un domaine");
+    fillSelect("editStatus", statuses, editStatusCurrent, "Choisir un statut");
+  }
+
   function recordToEvent(r) {
     const start = normalizeDate(r.DateDebut || r.DateEcheance);
     const endRaw = normalizeDate(r.DateEcheance || r.DateDebut);
@@ -508,7 +680,7 @@
     return mappedRecords
       .filter(r => isTrue(r.Evenement))
       .filter(r => !serviceFilter || displayValue(r.Service) === serviceFilter)
-      .filter(r => !assigneeFilter || displayValue(r.Assigne) === assigneeFilter)
+      .filter(r => hasAssignee(r.Assigne, assigneeFilter))
       .map(recordToEvent)
       .filter(Boolean);
   }
@@ -517,8 +689,7 @@
     const currentService = $("filterService").value;
     const currentAssignee = $("filterAssignee").value;
 
-    const services = [...new Set(mappedRecords.map(r => displayValue(r.Service)).filter(Boolean))].sort();
-    const assignees = [...new Set(mappedRecords.map(r => displayValue(r.Assigne)).filter(Boolean))].sort();
+    const services = uniqueValues("Service");
 
     $("filterService").innerHTML =
       `<option value="">Tous les services</option>` +
@@ -526,10 +697,12 @@
 
     $("filterAssignee").innerHTML =
       `<option value="">Tous les assignés</option>` +
-      assignees.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+      TEAM_ASSIGNEES.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
 
     if (services.includes(currentService)) $("filterService").value = currentService;
-    if (assignees.includes(currentAssignee)) $("filterAssignee").value = currentAssignee;
+    if (TEAM_ASSIGNEES.includes(currentAssignee)) $("filterAssignee").value = currentAssignee;
+
+    refreshFormLists();
   }
 
   function refreshCalendar() {
@@ -540,18 +713,66 @@
 
   function openDetail(event) {
     const p = event.extendedProps;
-    $("detailContent").innerHTML = `
-      <div class="detail-row"><div class="detail-label">Service</div><div class="detail-value">${escapeHtml(p.service)}</div></div>
-      <div class="detail-row"><div class="detail-label">Assigné</div><div class="detail-value">${escapeHtml(p.assignee)}</div></div>
-      <div class="detail-row"><div class="detail-label">Domaine</div><div class="detail-value">${escapeHtml(p.domain)}</div></div>
-      <div class="detail-row"><div class="detail-label">Statut</div><div class="detail-value">${escapeHtml(p.status)}</div></div>
-      <div class="detail-row"><div class="detail-label">Date de début</div><div class="detail-value">${escapeHtml(formatDateFR(p.dateStart))}</div></div>
-      <div class="detail-row"><div class="detail-label">Date d’échéance</div><div class="detail-value">${escapeHtml(formatDateFR(p.dateEnd))}</div></div>
-      <div class="detail-row"><div class="detail-label">Description</div><div class="detail-value">${escapeHtml(p.description)}</div></div>
-      <div class="detail-row"><div class="detail-label">Commentaire</div><div class="detail-value">${escapeHtml(p.comment)}</div></div>
-    `;
+    currentDetailRowId = p.rowId;
+
+    const services = uniqueValues("Service");
+    const domains = uniqueValues("Domaine");
+    const statuses = uniqueValues("Statut");
+
+    fillSelect("editService", services, p.service, "Choisir un service");
+    fillSelect("editDomain", domains, p.domain, "Choisir un domaine");
+    fillSelect("editStatus", statuses, p.status, "Choisir un statut");
+    renderAssigneeChoices("editAssigneeOptions", splitAssignees(p.assignee));
+
+    $("editStart").value = ymd(normalizeDate(p.dateStart));
+    $("editEnd").value = ymd(normalizeDate(p.dateEnd));
+    $("editDescription").value = p.description || "";
+    $("editComment").value = p.comment || "";
+
+    const row = mappedRecords.find(r => String(r.id) === String(p.rowId));
+    $("editEvent").checked = row ? isTrue(row.Evenement) : true;
+
     $("detailBackdrop").style.display = "flex";
     if (p.rowId) grist.setCursorPos({rowId:p.rowId});
+  }
+
+  async function saveDetail() {
+    if (!currentDetailRowId) return;
+
+    const assignees = selectedAssignees("editAssigneeOptions");
+    const logicalRecord = {
+      Service: $("editService").value,
+      Assigne: assignees.join(", "),
+      Domaine: $("editDomain").value,
+      Statut: $("editStatus").value,
+      DateDebut: $("editStart").value,
+      DateEcheance: $("editEnd").value || $("editStart").value,
+      Description: $("editDescription").value.trim(),
+      Commentaire: $("editComment").value.trim(),
+      Evenement: $("editEvent").checked
+    };
+
+    if (!logicalRecord.Service || !logicalRecord.DateDebut || !logicalRecord.Description) {
+      alert("Service, date de début et description sont obligatoires.");
+      return;
+    }
+
+    try {
+      const mappedBack = grist.mapColumnNamesBack(logicalRecord, {mappings:lastMappings});
+      await grist.selectedTable.update(
+        {id:Number(currentDetailRowId), fields:mappedBack},
+        {parseStrings:true}
+      );
+      $("detailBackdrop").style.display = "none";
+    } catch (err) {
+      console.error(err);
+      alert(
+        "Modification impossible. Vérifie le niveau d’accès du widget et le mappage des colonnes.
+
+" +
+        (err?.message || err)
+      );
+    }
   }
 
   function showTooltip(event, jsEvent) {
@@ -582,10 +803,20 @@
   }
 
   function openCreate(startDate=null, endDate=null) {
-    $("newService").value = $("filterService").value || "";
-    $("newAssignee").value = $("filterAssignee").value || "";
-    $("newDomain").value = "";
-    $("newStatus").value = "";
+    refreshFormLists();
+
+    const services = uniqueValues("Service");
+    const domains = uniqueValues("Domaine");
+    const statuses = uniqueValues("Statut");
+
+    fillSelect("newService", services, $("filterService").value || "", "Choisir un service");
+    fillSelect("newDomain", domains, "", "Choisir un domaine");
+    fillSelect("newStatus", statuses, "", "Choisir un statut");
+    renderAssigneeChoices(
+      "newAssigneeOptions",
+      $("filterAssignee").value ? [$("filterAssignee").value] : []
+    );
+
     $("newDescription").value = "";
     $("newComment").value = "";
     $("newEvent").checked = true;
@@ -606,16 +837,16 @@
 
   async function createAction() {
     const logicalRecord = {
-      Service: $("newService").value.trim(),
-      Assigne: $("newAssignee").value.trim(),
-      Domaine: $("newDomain").value.trim(),
+      Service: $("newService").value,
+      Assigne: selectedAssignees("newAssigneeOptions").join(", "),
+      Domaine: $("newDomain").value,
       DateDebut: $("newStart").value,
       DateEcheance: $("newEnd").value || $("newStart").value,
       Description: $("newDescription").value.trim(),
       Evenement: $("newEvent").checked
     };
 
-    if ($("newStatus").value.trim()) logicalRecord.Statut = $("newStatus").value.trim();
+    if ($("newStatus").value) logicalRecord.Statut = $("newStatus").value;
     if ($("newComment").value.trim()) logicalRecord.Commentaire = $("newComment").value.trim();
 
     if (!logicalRecord.Service || !logicalRecord.DateDebut || !logicalRecord.Description) {
@@ -715,11 +946,15 @@
 
     $("createBtn").addEventListener("click", () => openCreate());
     $("closeDetail").addEventListener("click", () => $("detailBackdrop").style.display = "none");
+    $("saveDetail").addEventListener("click", saveDetail);
     $("cancelCreate").addEventListener("click", () => $("createBackdrop").style.display = "none");
     $("saveCreate").addEventListener("click", createAction);
 
     $("detailBackdrop").addEventListener("click", e => {
-      if (e.target === $("detailBackdrop")) $("detailBackdrop").style.display = "none";
+      if (e.target === $("detailBackdrop")) {
+        $("detailBackdrop").style.display = "none";
+        currentDetailRowId = null;
+      }
     });
     $("createBackdrop").addEventListener("click", e => {
       if (e.target === $("createBackdrop")) $("createBackdrop").style.display = "none";
