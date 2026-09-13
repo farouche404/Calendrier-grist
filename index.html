@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Calendrier BMEO – V2</title>
+
+  <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.19/index.global.min.js"></script>
+
+  <style>
+    :root {
+      --border:#e7eaf0;
+      --muted:#667085;
+      --text:#202939;
+      --bg:#f8fafc;
+      --soft:#f4f6f9;
+      --card:#ffffff;
+      --accent:#334155;
+      --shadow:0 12px 32px rgba(15,23,42,.14);
+      --soft-shadow:0 3px 12px rgba(15,23,42,.07);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }
+
+    #app { height: 100vh; display: flex; flex-direction: column; }
+
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,.96);
+      box-shadow: 0 1px 0 rgba(15,23,42,.03);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .toolbar .spacer { flex: 1; }
+
+    select, input, textarea, button {
+      font: inherit;
+    }
+
+    select, input, textarea {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 9px 11px;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(15,23,42,.03);
+      color: var(--text);
+    }
+
+    select { min-width: 170px; }
+
+    button {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 9px 13px;
+      background: #fff;
+      transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+      cursor: pointer;
+    }
+
+    button:hover { transform: translateY(-1px); box-shadow: var(--soft-shadow); }
+
+    button.primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    #calendarWrap { flex: 1; min-height: 0; padding: 14px; }
+    #calendar {
+      height: 100%;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 10px;
+      box-shadow: var(--soft-shadow);
+      overflow: hidden;
+    }
+
+    .fc .fc-toolbar { gap: 10px; }
+    .fc .fc-toolbar-title { font-size: 1.12rem; font-weight: 750; letter-spacing:-.01em; }
+    .fc .fc-button {
+      text-transform: none;
+      border-radius: 9px !important;
+      box-shadow: none !important;
+    }
+    .fc .fc-button-primary {
+      background: #334155;
+      border-color: #334155;
+    }
+    .fc .fc-button-primary:not(:disabled):hover { background:#1f2937; border-color:#1f2937; }
+    .fc .fc-button-primary:not(:disabled).fc-button-active { background:#111827; border-color:#111827; }
+
+    .fc-theme-standard td,
+    .fc-theme-standard th { border-color:#edf0f4; }
+
+    .fc .fc-col-header-cell-cushion {
+      padding: 8px 4px;
+      color:#475467;
+      font-weight:700;
+      text-decoration:none;
+    }
+
+    .fc .fc-daygrid-day-number {
+      color:#475467;
+      text-decoration:none;
+      padding:7px;
+      font-weight:600;
+    }
+
+    .fc .fc-day-today { background:#fffaf0 !important; }
+
+    .fc-event {
+      border: 0 !important;
+      border-radius: 7px !important;
+      box-shadow: 0 1px 2px rgba(15,23,42,.08);
+      transition: transform .16s ease, box-shadow .16s ease, filter .16s ease;
+      overflow: visible !important;
+    }
+
+    .fc-event:hover {
+      transform: scale(1.045);
+      z-index: 30 !important;
+      box-shadow: 0 7px 18px rgba(15,23,42,.18);
+      filter: saturate(1.02);
+    }
+
+    .event-compact {
+      font-size: 10.5px;
+      line-height: 1.22;
+      padding: 4px 6px;
+      overflow: hidden;
+      min-height: 30px;
+      color:#253047;
+    }
+
+    .event-main {
+      font-weight: 750;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .event-description {
+      margin-top: 2px;
+      font-size: 9.8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      opacity:.9;
+    }
+
+    .tooltip {
+      position: fixed;
+      display: none;
+      max-width: 340px;
+      z-index: 9999;
+      background: #ffffff;
+      color: #1f2937;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 12px 14px;
+      box-shadow: var(--shadow);
+      pointer-events: none;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .tooltip b { display:block; margin-bottom: 4px; }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(17,24,39,.35);
+      z-index: 10000;
+      padding: 18px;
+    }
+
+    .modal {
+      width: min(620px, 100%);
+      max-height: 90vh;
+      overflow: auto;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      padding: 18px;
+    }
+
+    .modal h2 { margin: 0 0 14px; font-size: 18px; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .field { display:flex; flex-direction:column; gap:6px; }
+    .field.full { grid-column: 1 / -1; }
+    .field label { font-size:12px; color:var(--muted); font-weight:600; }
+    textarea { min-height: 92px; resize: vertical; }
+
+    .actions {
+      margin-top: 16px;
+      display:flex;
+      justify-content:flex-end;
+      gap:8px;
+    }
+
+    .detail-row {
+      display:grid;
+      grid-template-columns: 145px 1fr;
+      gap:10px;
+      padding:8px 0;
+      border-bottom:1px solid #eef0f3;
+    }
+
+    .detail-row:last-child { border-bottom:0; }
+    .detail-label { color:var(--muted); font-size:12px; font-weight:600; }
+    .detail-value { white-space:pre-wrap; }
+
+    .notice {
+      padding: 8px 12px;
+      font-size: 12px;
+      color: #7a4a00;
+      background: #fff6df;
+      border-bottom: 1px solid #ffe0a3;
+      display:none;
+    }
+
+    @media (max-width: 700px) {
+      .grid { grid-template-columns:1fr; }
+      .field.full { grid-column:auto; }
+      .detail-row { grid-template-columns:1fr; gap:3px; }
+      select { min-width:140px; flex:1; }
+    }
+  </style>
+</head>
+
+<body>
+<div id="app">
+  <div id="notice" class="notice"></div>
+
+  <div class="toolbar">
+    <select id="filterService">
+      <option value="">Tous les services</option>
+    </select>
+
+    <select id="filterAssignee">
+      <option value="">Tous les assignés</option>
+    </select>
+
+    <button id="clearFilters">Réinitialiser les filtres</button>
+    <div class="spacer"></div>
+    <button id="createBtn" class="primary">+ Nouvelle action</button>
+  </div>
+
+  <div id="calendarWrap">
+    <div id="calendar"></div>
+  </div>
+</div>
+
+<div id="tooltip" class="tooltip"></div>
+
+<div id="detailBackdrop" class="modal-backdrop">
+  <div class="modal">
+    <h2>Détail de l’événement</h2>
+    <div id="detailContent"></div>
+    <div class="actions">
+      <button id="closeDetail">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<div id="createBackdrop" class="modal-backdrop">
+  <div class="modal">
+    <h2>Créer une action</h2>
+    <div class="grid">
+      <div class="field">
+        <label>Service</label>
+        <input id="newService" placeholder="Ex. SDIS 03" />
+      </div>
+
+      <div class="field">
+        <label>Assigné</label>
+        <input id="newAssignee" placeholder="Ex. Malik" />
+      </div>
+
+      <div class="field">
+        <label>Domaine</label>
+        <input id="newDomain" placeholder="Ex. Raccordement RIE" />
+      </div>
+
+      <div class="field">
+        <label>Statut (optionnel)</label>
+        <input id="newStatus" />
+      </div>
+
+      <div class="field">
+        <label>Date de début</label>
+        <input id="newStart" type="date" />
+      </div>
+
+      <div class="field">
+        <label>Date d’échéance</label>
+        <input id="newEnd" type="date" />
+      </div>
+
+      <div class="field full">
+        <label>Description</label>
+        <textarea id="newDescription"></textarea>
+      </div>
+
+      <div class="field full">
+        <label>Commentaire (optionnel)</label>
+        <textarea id="newComment"></textarea>
+      </div>
+
+      <div class="field full">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#344054">
+          <input id="newEvent" type="checkbox" checked style="width:auto" />
+          Afficher cette action dans le calendrier
+        </label>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="cancelCreate">Annuler</button>
+      <button id="saveCreate" class="primary">Créer dans Grist</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const REQUIRED_COLUMNS = [
+    {name:"Service", title:"Service", type:"Any"},
+    {name:"Assigne", title:"Assigné", type:"Any"},
+    {name:"Description", title:"Description", type:"Text"},
+    {name:"DateDebut", title:"Date de début", type:"Date,DateTime"},
+    {name:"DateEcheance", title:"Date d'échéance", type:"Date,DateTime"},
+    {name:"Domaine", title:"Domaine", type:"Any"},
+    {name:"Statut", title:"Statut", optional:true, type:"Any"},
+    {name:"Commentaire", title:"Commentaire", optional:true, type:"Text"},
+    {name:"Evenement", title:"Événement", type:"Bool"}
+  ];
+
+  let sourceRecords = [];
+  let mappedRecords = [];
+  let lastMappings = null;
+  let calendar = null;
+
+  const $ = id => document.getElementById(id);
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;")
+      .replaceAll("'","&#039;");
+  }
+
+  function displayValue(v) {
+    if (v == null) return "";
+    if (Array.isArray(v)) {
+      // Handles some Grist encoded/list-ish values gracefully.
+      if (v.length && typeof v[0] === "string" && ["L","l"].includes(v[0])) {
+        return v.slice(1).join(", ");
+      }
+      return v.join(", ");
+    }
+    if (typeof v === "object") {
+      if (typeof v.toISOString === "function") return v.toISOString();
+      return String(v);
+    }
+    return String(v);
+  }
+
+  function normalizeDate(value) {
+    if (value == null || value === "") return null;
+
+    // Grist Date/DateTime may arrive as numbers (seconds since epoch)
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return new Date(value * 1000);
+    }
+
+    // moment-like object
+    if (typeof value === "object") {
+      if (typeof value.toDate === "function") return value.toDate();
+      if (typeof value.valueOf === "function") {
+        const n = value.valueOf();
+        if (typeof n === "number" && Number.isFinite(n)) {
+          const d = new Date(n);
+          if (!Number.isNaN(d.getTime())) return d;
+        }
+      }
+    }
+
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  function ymd(date) {
+    if (!date) return "";
+    const y = date.getFullYear();
+    const m = String(date.getMonth()+1).padStart(2,"0");
+    const d = String(date.getDate()).padStart(2,"0");
+    return `${y}-${m}-${d}`;
+  }
+
+  function formatDateFR(value) {
+    const d = normalizeDate(value);
+    if (!d) return "";
+    return new Intl.DateTimeFormat("fr-FR", {
+      day:"2-digit", month:"2-digit", year:"numeric"
+    }).format(d);
+  }
+
+  const SERVICE_PASTELS = [
+    {bg:"#DDEBFF", text:"#274060"},
+    {bg:"#FCE1E4", text:"#6B3340"},
+    {bg:"#E2F0D9", text:"#365B2C"},
+    {bg:"#FFF0C9", text:"#6C5422"},
+    {bg:"#E8DDF8", text:"#51416D"},
+    {bg:"#D9F1F0", text:"#285C5A"},
+    {bg:"#F7E0C7", text:"#694A2E"},
+    {bg:"#E2E8F8", text:"#36466F"},
+    {bg:"#F6DDF0", text:"#6A3D62"},
+    {bg:"#E5F2D6", text:"#45612C"},
+    {bg:"#DDEAF0", text:"#355765"},
+    {bg:"#FDE6CF", text:"#735039"},
+    {bg:"#EADFF5", text:"#5D4772"},
+    {bg:"#D8F0E5", text:"#2D624C"},
+    {bg:"#F5E7B8", text:"#6F5B22"},
+    {bg:"#E1E4FA", text:"#454E78"}
+  ];
+
+  function servicePastel(text) {
+    const s = displayValue(text) || "Sans service";
+    let hash = 0;
+    for (let i=0; i<s.length; i++) hash = s.charCodeAt(i) + ((hash << 5) - hash);
+    return SERVICE_PASTELS[Math.abs(hash) % SERVICE_PASTELS.length];
+  }
+
+  function isTrue(value) {
+    if (value === true || value === 1) return true;
+    const s = String(value ?? "").trim().toLowerCase();
+    return ["true","vrai","1","yes","oui"].includes(s);
+  }
+
+  function recordToEvent(r) {
+    const start = normalizeDate(r.DateDebut || r.DateEcheance);
+    const endRaw = normalizeDate(r.DateEcheance || r.DateDebut);
+    if (!start) return null;
+
+    // FullCalendar all-day "end" is exclusive. Add one day to include échéance.
+    let end = null;
+    if (endRaw) {
+      end = new Date(endRaw);
+      end.setDate(end.getDate() + 1);
+    }
+
+    const service = displayValue(r.Service);
+    const assignee = displayValue(r.Assigne);
+    const description = displayValue(r.Description);
+    const domain = displayValue(r.Domaine);
+
+    const palette = servicePastel(service);
+
+    return {
+      id: String(r.id),
+      title: `${assignee || "Non assigné"} · ${service || "Sans service"} · ${description || ""}`,
+      start: ymd(start),
+      end: end ? ymd(end) : undefined,
+      allDay: true,
+      backgroundColor: palette.bg,
+      borderColor: palette.bg,
+      textColor: palette.text,
+      extendedProps: {
+        rowId: r.id,
+        service,
+        assignee,
+        description,
+        domain,
+        status: displayValue(r.Statut),
+        comment: displayValue(r.Commentaire),
+        dateStart: r.DateDebut,
+        dateEnd: r.DateEcheance,
+        raw: r
+      }
+    };
+  }
+
+  function filteredEvents() {
+    const serviceFilter = $("filterService").value;
+    const assigneeFilter = $("filterAssignee").value;
+
+    return mappedRecords
+      .filter(r => isTrue(r.Evenement))
+      .filter(r => !serviceFilter || displayValue(r.Service) === serviceFilter)
+      .filter(r => !assigneeFilter || displayValue(r.Assigne) === assigneeFilter)
+      .map(recordToEvent)
+      .filter(Boolean);
+  }
+
+  function rebuildFilters() {
+    const currentService = $("filterService").value;
+    const currentAssignee = $("filterAssignee").value;
+
+    const services = [...new Set(mappedRecords.map(r => displayValue(r.Service)).filter(Boolean))].sort();
+    const assignees = [...new Set(mappedRecords.map(r => displayValue(r.Assigne)).filter(Boolean))].sort();
+
+    $("filterService").innerHTML =
+      `<option value="">Tous les services</option>` +
+      services.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+
+    $("filterAssignee").innerHTML =
+      `<option value="">Tous les assignés</option>` +
+      assignees.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+
+    if (services.includes(currentService)) $("filterService").value = currentService;
+    if (assignees.includes(currentAssignee)) $("filterAssignee").value = currentAssignee;
+  }
+
+  function refreshCalendar() {
+    if (!calendar) return;
+    calendar.removeAllEvents();
+    calendar.addEventSource(filteredEvents());
+  }
+
+  function openDetail(event) {
+    const p = event.extendedProps;
+    $("detailContent").innerHTML = `
+      <div class="detail-row"><div class="detail-label">Service</div><div class="detail-value">${escapeHtml(p.service)}</div></div>
+      <div class="detail-row"><div class="detail-label">Assigné</div><div class="detail-value">${escapeHtml(p.assignee)}</div></div>
+      <div class="detail-row"><div class="detail-label">Domaine</div><div class="detail-value">${escapeHtml(p.domain)}</div></div>
+      <div class="detail-row"><div class="detail-label">Statut</div><div class="detail-value">${escapeHtml(p.status)}</div></div>
+      <div class="detail-row"><div class="detail-label">Date de début</div><div class="detail-value">${escapeHtml(formatDateFR(p.dateStart))}</div></div>
+      <div class="detail-row"><div class="detail-label">Date d’échéance</div><div class="detail-value">${escapeHtml(formatDateFR(p.dateEnd))}</div></div>
+      <div class="detail-row"><div class="detail-label">Description</div><div class="detail-value">${escapeHtml(p.description)}</div></div>
+      <div class="detail-row"><div class="detail-label">Commentaire</div><div class="detail-value">${escapeHtml(p.comment)}</div></div>
+    `;
+    $("detailBackdrop").style.display = "flex";
+    if (p.rowId) grist.setCursorPos({rowId:p.rowId});
+  }
+
+  function showTooltip(event, jsEvent) {
+    const p = event.extendedProps;
+    $("tooltip").innerHTML = `
+      <b>${escapeHtml(p.assignee || "Non assigné")} · ${escapeHtml(p.service || "Sans service")}</b>
+      <div style="margin-top:5px">${escapeHtml(p.description || "")}</div>
+      <div style="margin-top:7px;font-size:11px;color:#667085">${escapeHtml(p.domain || "")}</div>
+    `;
+    $("tooltip").style.display = "block";
+    moveTooltip(jsEvent);
+  }
+
+  function moveTooltip(jsEvent) {
+    const tt = $("tooltip");
+    let x = jsEvent.clientX + 14;
+    let y = jsEvent.clientY + 14;
+    const maxX = window.innerWidth - tt.offsetWidth - 10;
+    const maxY = window.innerHeight - tt.offsetHeight - 10;
+    x = Math.min(x, maxX);
+    y = Math.min(y, maxY);
+    tt.style.left = `${Math.max(10,x)}px`;
+    tt.style.top = `${Math.max(10,y)}px`;
+  }
+
+  function closeTooltip() {
+    $("tooltip").style.display = "none";
+  }
+
+  function openCreate(startDate=null, endDate=null) {
+    $("newService").value = $("filterService").value || "";
+    $("newAssignee").value = $("filterAssignee").value || "";
+    $("newDomain").value = "";
+    $("newStatus").value = "";
+    $("newDescription").value = "";
+    $("newComment").value = "";
+    $("newEvent").checked = true;
+
+    if (startDate) $("newStart").value = ymd(startDate);
+    else $("newStart").value = "";
+
+    if (endDate) {
+      const inclusiveEnd = new Date(endDate);
+      inclusiveEnd.setDate(inclusiveEnd.getDate()-1);
+      $("newEnd").value = ymd(inclusiveEnd);
+    } else {
+      $("newEnd").value = $("newStart").value;
+    }
+
+    $("createBackdrop").style.display = "flex";
+  }
+
+  async function createAction() {
+    const logicalRecord = {
+      Service: $("newService").value.trim(),
+      Assigne: $("newAssignee").value.trim(),
+      Domaine: $("newDomain").value.trim(),
+      DateDebut: $("newStart").value,
+      DateEcheance: $("newEnd").value || $("newStart").value,
+      Description: $("newDescription").value.trim(),
+      Evenement: $("newEvent").checked
+    };
+
+    if ($("newStatus").value.trim()) logicalRecord.Statut = $("newStatus").value.trim();
+    if ($("newComment").value.trim()) logicalRecord.Commentaire = $("newComment").value.trim();
+
+    if (!logicalRecord.Service || !logicalRecord.DateDebut || !logicalRecord.Description) {
+      alert("Service, date de début et description sont obligatoires.");
+      return;
+    }
+
+    try {
+      const mappedBack = grist.mapColumnNamesBack(logicalRecord, {mappings:lastMappings});
+      await grist.selectedTable.create({fields:mappedBack}, {parseStrings:true});
+      $("createBackdrop").style.display = "none";
+    } catch (err) {
+      console.error(err);
+      alert(
+        "Création impossible. Vérifie le niveau d’accès du widget et le mappage des colonnes.\n\n" +
+        (err?.message || err)
+      );
+    }
+  }
+
+  function setNotice(message) {
+    $("notice").textContent = message;
+    $("notice").style.display = message ? "block" : "none";
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    calendar = new FullCalendar.Calendar($("calendar"), {
+      locale: "fr",
+      initialView: "dayGridMonth",
+      height: "100%",
+      firstDay: 1,
+      weekends: true,
+      selectable: true,
+      dayMaxEvents: 5,
+      moreLinkClick: "popover",
+
+      headerToolbar: {
+        left: "prev,next today",
+        center: "title",
+        right: "dayGridMonth,timeGridWeek,timeGridDay"
+      },
+
+      buttonText: {
+        today: "Aujourd’hui",
+        month: "Mois",
+        week: "Semaine",
+        day: "Jour"
+      },
+
+      events: [],
+
+      eventContent(info) {
+        const p = info.event.extendedProps;
+        return {
+          html: `<div class="event-compact">
+            <div class="event-main">${escapeHtml(p.assignee || "Non assigné")} · ${escapeHtml(p.service || "Sans service")}</div>
+            <div class="event-description">${escapeHtml(p.description || "")}</div>
+          </div>`
+        };
+      },
+
+      eventMouseEnter(info) {
+        showTooltip(info.event, info.jsEvent);
+        info.el.addEventListener("mousemove", moveTooltip);
+      },
+
+      eventMouseLeave(info) {
+        closeTooltip();
+        info.el.removeEventListener("mousemove", moveTooltip);
+      },
+
+      eventClick(info) {
+        info.jsEvent.preventDefault();
+        openDetail(info.event);
+      },
+
+      select(info) {
+        openCreate(info.start, info.end);
+        calendar.unselect();
+      },
+
+      dateClick(info) {
+        openCreate(info.date, null);
+      }
+    });
+
+    calendar.render();
+
+    $("filterService").addEventListener("change", refreshCalendar);
+    $("filterAssignee").addEventListener("change", refreshCalendar);
+
+    $("clearFilters").addEventListener("click", () => {
+      $("filterService").value = "";
+      $("filterAssignee").value = "";
+      refreshCalendar();
+    });
+
+    $("createBtn").addEventListener("click", () => openCreate());
+    $("closeDetail").addEventListener("click", () => $("detailBackdrop").style.display = "none");
+    $("cancelCreate").addEventListener("click", () => $("createBackdrop").style.display = "none");
+    $("saveCreate").addEventListener("click", createAction);
+
+    $("detailBackdrop").addEventListener("click", e => {
+      if (e.target === $("detailBackdrop")) $("detailBackdrop").style.display = "none";
+    });
+    $("createBackdrop").addEventListener("click", e => {
+      if (e.target === $("createBackdrop")) $("createBackdrop").style.display = "none";
+    });
+  });
+
+  grist.ready({
+    requiredAccess: "full",
+    allowSelectBy: true,
+    columns: REQUIRED_COLUMNS
+  });
+
+  grist.onRecords((records, mappings) => {
+    sourceRecords = records || [];
+    lastMappings = mappings;
+
+    const mapped = grist.mapColumnNames(sourceRecords, {mappings});
+    if (!mapped) {
+      mappedRecords = [];
+      setNotice("Mappe les colonnes demandées dans le panneau du widget Grist.");
+    } else {
+      mappedRecords = mapped;
+      setNotice("");
+    }
+
+    rebuildFilters();
+    refreshCalendar();
+  }, {format:"rows", keepEncoded:false});
+</script>
+</body>
+</html>
