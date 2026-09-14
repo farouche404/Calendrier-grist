@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Suivi par service BMEO V2</title>
+  <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+  <style>
+    :root{
+      --bg:#f7f8fa; --card:#fff; --text:#1f2937; --muted:#667085;
+      --border:#e5e7eb; --soft:#eef2f6; --navy:#334155;
+      --danger:#be123c; --dangerBg:#fff1f2;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    button,select,input,textarea{font:inherit}
+    button{cursor:pointer}
+    .app{padding:16px;min-height:100vh}
+    .topbar{
+      display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fff;
+      border:1px solid var(--border);border-radius:14px;padding:12px 14px
+    }
+    .service-select{min-width:280px;max-width:460px;flex:1}
+    select,input,textarea{
+      width:100%;border:1px solid #d6dbe3;border-radius:10px;background:#fff;
+      color:var(--text);padding:10px 11px;outline:none
+    }
+    select:focus,input:focus,textarea:focus{border-color:#94a3b8;box-shadow:0 0 0 3px rgba(148,163,184,.16)}
+    .btn{border:0;border-radius:10px;padding:10px 13px;font-weight:750}
+    .btn-primary{background:var(--navy);color:#fff}
+    .btn-secondary{background:#fff;border:1px solid var(--border);color:var(--text)}
+    .hidden{display:none!important}
+
+    .hero{
+      margin-top:12px;background:#fff;border:1px solid var(--border);border-radius:14px;
+      padding:14px 16px;display:flex;gap:14px;justify-content:space-between;
+      align-items:center;flex-wrap:wrap
+    }
+    .identity h1{font-size:20px;margin:0 0 4px}
+    .identity .community{font-size:13px;color:var(--muted)}
+    .kpis{display:flex;gap:8px;flex-wrap:wrap}
+    .kpi{min-width:92px;background:#f8fafc;border:1px solid var(--border);border-radius:11px;padding:8px 10px}
+    .kpi strong{display:block;font-size:17px}
+    .kpi span{font-size:11px;color:var(--muted);font-weight:650}
+
+    .section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:18px 2px 9px}
+    .section-title h2{margin:0;font-size:15px}
+    .follow-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .follow-card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px}
+    .follow-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}
+    .follow-head h3{font-size:14px;margin:0}
+    .save-state{font-size:11px;color:var(--muted);min-height:16px}
+    .follow-card textarea{min-height:180px;resize:vertical;line-height:1.55;background:#fbfcfd}
+
+    .actions-wrap{background:#fff;border:1px solid var(--border);border-radius:14px;overflow:hidden}
+    .actions-table{width:100%;border-collapse:collapse;font-size:12px}
+    .actions-table th{background:#f1f5f9;text-align:left;padding:9px 10px;color:#475569;font-size:11px}
+    .actions-table td{padding:10px;border-top:1px solid #edf0f3;vertical-align:top}
+    .action-row{cursor:pointer}.action-row:hover{background:#fafbfc}
+    .status-pill,.priority-pill{display:inline-flex;border-radius:999px;padding:3px 8px;font-weight:750;font-size:11px}
+    .status-pill{background:#eef2ff;color:#3730a3}
+    .priority-pill{background:#f8fafc;border:1px solid #e5e7eb}
+    .empty{padding:34px;text-align:center;color:#8a94a6}
+
+    .notice{margin-top:12px;border-radius:11px;padding:10px 12px;font-size:13px}
+    .notice.warn{background:#fff7ed;color:#9a3412;border:1px solid #fed7aa}
+    .notice.error{background:var(--dangerBg);color:var(--danger);border:1px solid #fecdd3}
+
+    .modal-backdrop{
+      position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;
+      align-items:center;justify-content:center;z-index:100;padding:20px
+    }
+    .modal-backdrop.open{display:flex}
+    .modal{
+      width:min(760px,100%);max-height:90vh;overflow:auto;background:#fff;
+      border-radius:16px;box-shadow:0 24px 80px rgba(15,23,42,.28);padding:18px
+    }
+    .modal h2{margin:0 0 14px;font-size:19px}
+    .modal p.help{font-size:12px;color:var(--muted);margin:-6px 0 12px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .field{display:flex;flex-direction:column;gap:6px}
+    .field.full{grid-column:1/-1}
+    label{font-size:11px;color:var(--muted);font-weight:800}
+    .modal textarea{min-height:115px}
+    .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+    .search-results{margin-top:10px;border:1px solid var(--border);border-radius:10px;max-height:320px;overflow:auto}
+    .result{padding:10px 11px;border-top:1px solid #edf0f3;cursor:pointer;display:flex;justify-content:space-between;gap:10px}
+    .result:first-child{border-top:0}.result:hover{background:#f8fafc}.result small{color:var(--muted)}
+    .new-service{margin-top:12px;padding:12px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px}
+    .checkbox-row{display:flex;align-items:center;gap:8px;padding-top:20px}
+    .checkbox-row input{width:auto}
+    select[multiple]{min-height:120px}
+    @media(max-width:850px){
+      .follow-grid{grid-template-columns:1fr}
+      .actions-wrap{overflow:auto}.actions-table{min-width:850px}
+      .grid{grid-template-columns:1fr}.field.full{grid-column:auto}
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <select id="serviceSelect" class="service-select">
+      <option value="">Choisir un service suivi</option>
+    </select>
+    <button id="followBtn" class="btn btn-primary">+ Suivre un service</button>
+    <button id="refreshBtn" class="btn btn-secondary">Actualiser</button>
+  </div>
+
+  <div id="setupNotice" class="notice warn hidden"></div>
+
+  <div id="content" class="hidden">
+    <div class="hero">
+      <div class="identity">
+        <h1 id="serviceName">—</h1>
+        <div class="community" id="communityName">—</div>
+      </div>
+      <div class="kpis">
+        <div class="kpi"><strong id="kpiTotal">0</strong><span>Total actions</span></div>
+        <div class="kpi"><strong id="kpiInit">0</strong><span>À initier</span></div>
+        <div class="kpi"><strong id="kpiProgress">0</strong><span>En cours</span></div>
+        <div class="kpi"><strong id="kpiReview">0</strong><span>En revue/validation</span></div>
+        <div class="kpi"><strong id="kpiBlocked">0</strong><span>Bloqué</span></div>
+        <div class="kpi"><strong id="kpiDone">0</strong><span>Terminé</span></div>
+      </div>
+    </div>
+
+    <div class="section-title"><h2>Suivi du service</h2></div>
+
+    <div class="follow-grid">
+      <div class="follow-card">
+        <div class="follow-head"><h3>Raccordement RIE</h3><span class="save-state" id="stateRIE"></span></div>
+        <textarea id="txtRIE"></textarea>
+      </div>
+      <div class="follow-card">
+        <div class="follow-head"><h3>Raccordement VPN</h3><span class="save-state" id="stateVPN"></span></div>
+        <textarea id="txtVPN"></textarea>
+      </div>
+      <div class="follow-card">
+        <div class="follow-head"><h3>Passerelle</h3><span class="save-state" id="statePASS"></span></div>
+        <textarea id="txtPASS"></textarea>
+      </div>
+      <div class="follow-card">
+        <div class="follow-head"><h3>MDG</h3><span class="save-state" id="stateMDG"></span></div>
+        <textarea id="txtMDG"></textarea>
+      </div>
+    </div>
+
+    <div class="section-title">
+      <h2>Actions du service</h2>
+      <button id="createActionBtn" class="btn btn-primary">+ Créer une action</button>
+    </div>
+
+    <div class="actions-wrap">
+      <table class="actions-table">
+        <thead>
+          <tr>
+            <th>Description</th><th>Assigné</th><th>Domaine</th><th>Statut</th><th>Priorité</th><th>Échéance</th>
+          </tr>
+        </thead>
+        <tbody id="actionsBody"></tbody>
+      </table>
+      <div id="actionsEmpty" class="empty hidden">Aucune action pour ce service.</div>
+    </div>
+  </div>
+
+  <div id="noSelection" class="empty">
+    Sélectionnez un service suivi ou cliquez sur <strong>+ Suivre un service</strong>.
+  </div>
+</div>
+
+<!-- Suivre un service -->
+<div id="followModal" class="modal-backdrop">
+  <div class="modal">
+    <h2>Suivre un service</h2>
+    <p class="help">Recherchez d'abord dans le référentiel. La création n'est proposée que si le service n'existe pas.</p>
+    <input id="followSearch" placeholder="Rechercher un service…" autocomplete="off" />
+    <div id="followResults" class="search-results"></div>
+    <div id="newServiceBox" class="new-service hidden">
+      <strong>Ce service n'existe pas dans le référentiel.</strong>
+      <div class="grid" style="margin-top:10px">
+        <div class="field">
+          <label>Nom du service</label>
+          <input id="newServiceName" />
+        </div>
+        <div class="field">
+          <label>Communauté Nationale (optionnel)</label>
+          <input id="newServiceCommunity" />
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:10px">
+        <button id="createAndFollowBtn" class="btn btn-primary">Créer et suivre</button>
+      </div>
+    </div>
+    <div id="followError" class="notice error hidden"></div>
+    <div class="modal-actions"><button id="closeFollow" class="btn btn-secondary">Fermer</button></div>
+  </div>
+</div>
+
+<!-- Création / édition d'action -->
+<div id="actionModal" class="modal-backdrop">
+  <div class="modal">
+    <h2 id="actionModalTitle">Créer une action</h2>
+    <div class="grid">
+      <div class="field">
+        <label>Service</label>
+        <select id="actService"></select>
+      </div>
+      <div class="field">
+        <label>Domaine</label>
+        <select id="actDomaine"></select>
+      </div>
+      <div class="field full">
+        <label>Description</label>
+        <textarea id="actDescription"></textarea>
+      </div>
+      <div class="field">
+        <label>Assigné</label>
+        <select id="actAssigne" multiple></select>
+      </div>
+      <div class="field">
+        <label>Date de début</label>
+        <input id="actDebut" type="date" />
+      </div>
+      <div class="field">
+        <label>Date d’échéance</label>
+        <input id="actEcheance" type="date" />
+      </div>
+      <div class="field checkbox-row">
+        <input id="actEvenement" type="checkbox" />
+        <label for="actEvenement">Afficher comme événement</label>
+      </div>
+    </div>
+    <div id="actionError" class="notice error hidden"></div>
+    <div class="modal-actions">
+      <button id="closeAction" class="btn btn-secondary">Annuler</button>
+      <button id="saveAction" class="btn btn-primary">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const REF_TABLE = "REF_service_utilisateur";
+  const ACTIONS_TABLE = "Toutes_les_actions_BMEO";
+  const PEOPLE_TABLE = "REF_People";
+  const DOMAIN_TABLE = "Domaine";
+  const FOLLOW_COL = "Suivi_actif";
+
+  const REF_COLS = {
+    service:["Service"],
+    community:["Communaute_Nationale","Communauté_Nationale"],
+    rie:["Suivi_Raccordement_RIE"],
+    vpn:["Suivi_Raccordement_VPN"],
+    passerelle:["Suivi_Passerelle"],
+    mdg:["Suivi_MDG"]
+  };
+
+  const ACTION_COLS = {
+    service:["Service"],
+    assigne:["Assigne","Assigné"],
+    domaine:["Domaine"],
+    statut:["Statut"],
+    priorite:["Priorite","Priorité"],
+    description:["Description"],
+    echeance:["Date_d_echeance","Date_echeance","Date_d_échéance","Date_d'échéance"],
+    debut:["Date_de_debut","Date_de_début","Date_debut"],
+    evenement:["Evenement","Événement"]
+  };
+
+  const INITIAL_LABELS = new Set([
+    "Préalable :","I - Commande :","II - Préparation :",
+    "III - Installation :","III - Installation & activation :",
+    "- Type de passerelle :"
+  ]);
+
+  const DEFAULTS = {
+    rie:`Préalable :
+
+I - Commande :
+
+II - Préparation :
+
+III - Installation & activation :`,
+    vpn:`Préalable :
+
+I - Commande :
+
+II - Préparation :
+
+III - Installation & activation :`,
+    passerelle:`Préalable :
+
+I - Commande :
+- Type de passerelle :
+
+II - Préparation :
+
+III - Installation :`,
+    mdg:`Préalable :
+
+I - Commande :
+
+II - Préparation :
+
+III - Installation :`
+  };
+
+  let refs=null, actions=null, people=null, domains=null;
+  let activeServices=[], selectedServiceId=null, selectedActionId=null, actionMode="create";
+  let colRef={}, colAct={}, peopleMap=new Map(), domainMap=new Map();
+  let autosaveTimers={};
+
+  const $=id=>document.getElementById(id);
+  const keysOf=t=>t&&typeof t==="object"?Object.keys(t):[];
+  const text=v=>v==null?"":String(v);
+  const normName=s=>text(s).trim().replace(/\s+/g," ").toLocaleLowerCase("fr");
+  const normStatus=s=>text(s).normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toLowerCase();
+
+  function pickCol(table,candidates){
+    const keys=keysOf(table);
+    for(const c of candidates) if(keys.includes(c)) return c;
+    const norm=s=>String(s).normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-zA-Z0-9]/g,"").toLowerCase();
+    for(const c of candidates){
+      const nc=norm(c), k=keys.find(x=>norm(x)===nc);
+      if(k) return k;
+    }
+    return null;
+  }
+
+  function val(table,col,i){
+    return col&&table&&Array.isArray(table[col])?table[col][i]:null;
+  }
+
+  function meaningful(v){
+    const lines=text(v).split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+    return lines.some(line=>!INITIAL_LABELS.has(line));
+  }
+
+  function boolVal(v){
+    return v===true||v===1||String(v).toLowerCase()==="true";
+  }
+
+  function escapeHtml(s){
+    return text(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
+  }
+
+  function normalizeDate(v){
+    if(!v) return "";
+    if(typeof v==="number") return new Date(v*1000).toISOString().slice(0,10);
+    const s=text(v).trim();
+    const m=s.match(/^(\d{4}-\d{2}-\d{2})/);
+    if(m) return m[1];
+    const d=new Date(s);
+    return isNaN(d)?"":d.toISOString().slice(0,10);
+  }
+
+  function dateToGrist(v){
+    if(!v) return null;
+    const [y,m,d]=v.split("-").map(Number);
+    return Date.UTC(y,m-1,d)/1000;
+  }
+
+  function formatDate(v){
+    const iso=normalizeDate(v);
+    if(!iso) return "—";
+    const [y,m,d]=iso.split("-");
+    return `${d}/${m}/${y}`;
+  }
+
+  function isEncodedList(v){
+    return Array.isArray(v)&&v[0]==="L";
+  }
+
+  function rawIds(v){
+    if(v==null||v==="") return [];
+    if(isEncodedList(v)) return v.slice(1).map(Number).filter(Number.isFinite);
+    if(Array.isArray(v)) return v.map(Number).filter(Number.isFinite);
+    const n=Number(v);
+    return Number.isFinite(n)?[n]:[];
+  }
+
+  function bestLabelColumn(table,preferred=[],knownValues=[]){
+    const exact=pickCol(table,preferred);
+    if(exact) return exact;
+    if(!table) return null;
+
+    let best=null,bestScore=-1;
+    for(const k of keysOf(table)){
+      if(k==="id"||!Array.isArray(table[k])) continue;
+      const vals=table[k].filter(v=>typeof v==="string"&&v.trim()).slice(0,150);
+      if(!vals.length) continue;
+      let score=vals.length;
+      const unique=new Set(vals.map(v=>v.trim().toLowerCase())).size;
+      score+=unique*0.25;
+      score+=vals.filter(v=>v.length>=2&&v.length<=80).length*0.5;
+      for(const target of knownValues){
+        if(vals.some(v=>normName(v)===normName(target))) score+=100;
+      }
+      if(score>bestScore){bestScore=score;best=k;}
+    }
+    return best;
+  }
+
+  function makeLookup(table,labelCol){
+    const map=new Map();
+    if(!table||!Array.isArray(table.id)||!labelCol) return map;
+    table.id.forEach((id,i)=>map.set(Number(id),text(val(table,labelCol,i)).trim()));
+    return map;
+  }
+
+  function refLabel(v,map){
+    const ids=rawIds(v);
+    if(ids.length) return ids.map(id=>map.get(id)||String(id)).join(", ");
+    return text(v);
+  }
+
+  function setSelectOptions(select,rows,selectedIds=[],multiple=false){
+    select.innerHTML="";
+    rows.forEach(r=>{
+      const o=document.createElement("option");
+      o.value=String(r.id);
+      o.textContent=r.label;
+      o.selected=selectedIds.includes(Number(r.id));
+      select.appendChild(o);
+    });
+    if(!multiple&&selectedIds.length) select.value=String(selectedIds[0]);
+  }
+
+  function selectedMultiIds(select){
+    return [...select.selectedOptions].map(o=>Number(o.value)).filter(Number.isFinite);
+  }
+
+  function tableRows(table,labelMap){
+    if(!table||!Array.isArray(table.id)) return [];
+    return table.id.map(id=>({id:Number(id),label:labelMap.get(Number(id))||String(id)}))
+      .filter(r=>r.label)
+      .sort((a,b)=>a.label.localeCompare(b.label,"fr",{sensitivity:"base"}));
+  }
+
+  async function load(){
+    $("setupNotice").classList.add("hidden");
+
+    [refs,actions]=await Promise.all([
+      grist.docApi.fetchTable(REF_TABLE),
+      grist.docApi.fetchTable(ACTIONS_TABLE)
+    ]);
+
+    try{people=await grist.docApi.fetchTable(PEOPLE_TABLE);}catch(e){people=null;}
+    try{domains=await grist.docApi.fetchTable(DOMAIN_TABLE);}catch(e){domains=null;}
+
+    colRef={
+      service:pickCol(refs,REF_COLS.service),
+      community:pickCol(refs,REF_COLS.community),
+      rie:pickCol(refs,REF_COLS.rie),
+      vpn:pickCol(refs,REF_COLS.vpn),
+      passerelle:pickCol(refs,REF_COLS.passerelle),
+      mdg:pickCol(refs,REF_COLS.mdg),
+      follow:pickCol(refs,[FOLLOW_COL])
+    };
+
+    colAct={};
+    Object.entries(ACTION_COLS).forEach(([k,v])=>colAct[k]=pickCol(actions,v));
+
+    const peopleLabel=bestLabelColumn(
+      people,
+      ["Nom","Name","Prenom","Prénom","Utilisateur","People","Personne"],
+      ["David","Yvan","Stéphane","Franck","Mohamed"]
+    );
+    const domainLabel=bestLabelColumn(domains,["Domaine","Nom","Name","Libelle","Libellé"]);
+    peopleMap=makeLookup(people,peopleLabel);
+    domainMap=makeLookup(domains,domainLabel);
+
+    const missing=["service","rie","vpn","passerelle","mdg"].filter(k=>!colRef[k]);
+    if(missing.length){
+      $("setupNotice").textContent="Colonnes REF introuvables : "+missing.join(", ");
+      $("setupNotice").classList.remove("hidden");
+      return;
+    }
+
+    if(!colRef.follow){
+      $("setupNotice").innerHTML='Ajoute dans <strong>REF_service_utilisateur</strong> une colonne Booléen nommée <strong>Suivi_actif</strong>.';
+      $("setupNotice").classList.remove("hidden");
+    }
+
+    buildActiveServices();
+    renderServiceSelect();
+    if(selectedServiceId) renderSelected();
+  }
+
+  function actionBelongsToService(i,serviceId,serviceName){
+    const raw=val(actions,colAct.service,i);
+    const ids=rawIds(raw);
+    if(ids.length) return ids.includes(Number(serviceId));
+    return normName(raw)===normName(serviceName);
+  }
+
+  function serviceActions(serviceId,serviceName){
+    const rows=[];
+    if(!actions||!Array.isArray(actions.id)) return rows;
+    actions.id.forEach((id,i)=>{
+      if(actionBelongsToService(i,serviceId,serviceName)) rows.push({id:Number(id),i});
+    });
+    return rows;
+  }
+
+  function buildActiveServices(){
+    activeServices=[];
+    refs.id.forEach((id,i)=>{
+      const name=text(val(refs,colRef.service,i)).trim();
+      if(!name) return;
+      const hasAction=serviceActions(Number(id),name).length>0;
+      const hasFollow=colRef.follow?boolVal(val(refs,colRef.follow,i)):false;
+      const hasSheet=[colRef.rie,colRef.vpn,colRef.passerelle,colRef.mdg].some(c=>meaningful(val(refs,c,i)));
+      if(hasAction||hasFollow||hasSheet){
+        activeServices.push({
+          id:Number(id),name,
+          community:text(val(refs,colRef.community,i)).trim(),
+          i
+        });
+      }
+    });
+    activeServices.sort((a,b)=>a.name.localeCompare(b.name,"fr",{sensitivity:"base"}));
+  }
+
+  function renderServiceSelect(){
+    const sel=$("serviceSelect");
+    const keep=selectedServiceId;
+    sel.innerHTML='<option value="">Choisir un service suivi</option>';
+    activeServices.forEach(s=>{
+      const o=document.createElement("option");
+      o.value=String(s.id); o.textContent=s.name; sel.appendChild(o);
+    });
+    if(keep&&activeServices.some(s=>s.id===keep)) sel.value=String(keep);
+  }
+
+  function currentService(){
+    return activeServices.find(s=>s.id===Number(selectedServiceId))||null;
+  }
+
+  function renderSelected(){
+    const s=currentService();
+    if(!s){
+      $("content").classList.add("hidden");
+      $("noSelection").classList.remove("hidden");
+      return;
+    }
+
+    $("content").classList.remove("hidden");
+    $("noSelection").classList.add("hidden");
+    $("serviceName").textContent=s.name;
+    $("communityName").textContent=s.community||"Communauté Nationale non renseignée";
+
+    $("txtRIE").value=text(val(refs,colRef.rie,s.i))||DEFAULTS.rie;
+    $("txtVPN").value=text(val(refs,colRef.vpn,s.i))||DEFAULTS.vpn;
+    $("txtPASS").value=text(val(refs,colRef.passerelle,s.i))||DEFAULTS.passerelle;
+    $("txtMDG").value=text(val(refs,colRef.mdg,s.i))||DEFAULTS.mdg;
+
+    const rows=serviceActions(s.id,s.name);
+    const counts={
+      init:0,progress:0,review:0,blocked:0,done:0
+    };
+
+    rows.forEach(r=>{
+      const st=normStatus(val(actions,colAct.statut,r.i));
+      if(st==="a initier") counts.init++;
+      else if(st==="en cours") counts.progress++;
+      else if(st==="en revue/validation") counts.review++;
+      else if(st==="bloque") counts.blocked++;
+      else if(st==="termine") counts.done++;
+    });
+
+    $("kpiTotal").textContent=rows.length;
+    $("kpiInit").textContent=counts.init;
+    $("kpiProgress").textContent=counts.progress;
+    $("kpiReview").textContent=counts.review;
+    $("kpiBlocked").textContent=counts.blocked;
+    $("kpiDone").textContent=counts.done;
+
+    renderActions(rows);
+  }
+
+  function renderActions(rows){
+    const body=$("actionsBody");
+    body.innerHTML="";
+    $("actionsEmpty").classList.toggle("hidden",rows.length!==0);
+
+    rows.forEach(r=>{
+      const desc=text(val(actions,colAct.description,r.i))||"Sans description";
+      const ass=refLabel(val(actions,colAct.assigne,r.i),peopleMap)||"—";
+      const dom=refLabel(val(actions,colAct.domaine,r.i),domainMap)||"—";
+      const st=text(val(actions,colAct.statut,r.i))||"—";
+      const pr=text(val(actions,colAct.priorite,r.i))||"—";
+      const due=formatDate(val(actions,colAct.echeance,r.i));
+
+      const tr=document.createElement("tr");
+      tr.className="action-row";
+      tr.innerHTML=`<td><strong>${escapeHtml(desc)}</strong></td>
+        <td>${escapeHtml(ass)}</td>
+        <td>${escapeHtml(dom)}</td>
+        <td><span class="status-pill">${escapeHtml(st)}</span></td>
+        <td><span class="priority-pill">${escapeHtml(pr)}</span></td>
+        <td>${escapeHtml(due)}</td>`;
+      tr.addEventListener("click",()=>openEditAction(r.id,r.i));
+      body.appendChild(tr);
+    });
+  }
+
+  async function updateRef(rowId,fields){
+    await grist.docApi.applyUserActions([["UpdateRecord",REF_TABLE,Number(rowId),fields]]);
+  }
+
+  async function updateAction(rowId,fields){
+    await grist.docApi.applyUserActions([["UpdateRecord",ACTIONS_TABLE,Number(rowId),fields]]);
+  }
+
+  async function addAction(fields){
+    await grist.docApi.applyUserActions([["AddRecord",ACTIONS_TABLE,null,fields]]);
+  }
+
+  function scheduleAutosave(kind){
+    clearTimeout(autosaveTimers[kind]);
+    const cfg={
+      RIE:{col:colRef.rie,input:"txtRIE",state:"stateRIE"},
+      VPN:{col:colRef.vpn,input:"txtVPN",state:"stateVPN"},
+      PASS:{col:colRef.passerelle,input:"txtPASS",state:"statePASS"},
+      MDG:{col:colRef.mdg,input:"txtMDG",state:"stateMDG"}
+    }[kind];
+    $(cfg.state).textContent="Modification…";
+    autosaveTimers[kind]=setTimeout(()=>saveFollowBlock(kind),700);
+  }
+
+  async function saveFollowBlock(kind){
+    const s=currentService();
+    if(!s) return;
+
+    const cfg={
+      RIE:{col:colRef.rie,input:"txtRIE",state:"stateRIE"},
+      VPN:{col:colRef.vpn,input:"txtVPN",state:"stateVPN"},
+      PASS:{col:colRef.passerelle,input:"txtPASS",state:"statePASS"},
+      MDG:{col:colRef.mdg,input:"txtMDG",state:"stateMDG"}
+    }[kind];
+
+    const state=$(cfg.state);
+    state.textContent="Enregistrement…";
+
+    try{
+      const fields={[cfg.col]:$(cfg.input).value};
+      if(colRef.follow) fields[colRef.follow]=true;
+      await updateRef(s.id,fields);
+      state.textContent="Enregistré";
+      await load();
+      setTimeout(()=>{if(state.textContent==="Enregistré") state.textContent="";},1200);
+    }catch(e){
+      state.textContent="Erreur";
+      alert("Impossible d’enregistrer : "+(e?.message||e));
+    }
+  }
+
+  function allRefServices(){
+    const arr=[];
+    refs.id.forEach((id,i)=>{
+      const name=text(val(refs,colRef.service,i)).trim();
+      if(name){
+        arr.push({
+          id:Number(id),name,
+          community:text(val(refs,colRef.community,i)).trim()
+        });
+      }
+    });
+    return arr.sort((a,b)=>a.name.localeCompare(b.name,"fr",{sensitivity:"base"}));
+  }
+
+  function openFollow(){
+    $("followSearch").value="";
+    $("followResults").innerHTML="";
+    $("newServiceBox").classList.add("hidden");
+    $("followError").classList.add("hidden");
+    $("followModal").classList.add("open");
+    renderFollowResults("");
+    setTimeout(()=>$("followSearch").focus(),50);
+  }
+
+  function closeFollow(){ $("followModal").classList.remove("open"); }
+
+  function renderFollowResults(q){
+    const query=normName(q);
+    const all=allRefServices();
+    const matches=(query?all.filter(s=>normName(s.name).includes(query)):all).slice(0,80);
+    const box=$("followResults"); box.innerHTML="";
+
+    matches.forEach(s=>{
+      const d=document.createElement("div");
+      d.className="result";
+      const isActive=activeServices.some(a=>a.id===s.id);
+      d.innerHTML=`<span>${escapeHtml(s.name)}</span><small>${escapeHtml(s.community||(isActive?"Déjà suivi":""))}</small>`;
+      d.addEventListener("click",()=>followExisting(s.id));
+      box.appendChild(d);
+    });
+
+    const exact=query&&all.some(s=>normName(s.name)===query);
+    if(query&&!exact){
+      $("newServiceBox").classList.remove("hidden");
+      $("newServiceName").value=q.trim();
+    }else{
+      $("newServiceBox").classList.add("hidden");
+    }
+  }
+
+  function showFollowError(msg){
+    const e=$("followError"); e.textContent=msg; e.classList.remove("hidden");
+  }
+
+  async function followExisting(id){
+    try{
+      if(!colRef.follow){
+        showFollowError("Ajoute d’abord la colonne Booléen Suivi_actif dans REF_service_utilisateur.");
+        return;
+      }
+      await updateRef(id,{[colRef.follow]:true});
+      selectedServiceId=Number(id);
+      closeFollow();
+      await load();
+      $("serviceSelect").value=String(id);
+      renderSelected();
+    }catch(e){
+      showFollowError("Impossible d’ajouter au suivi : "+(e?.message||e));
+    }
+  }
+
+  async function createAndFollow(){
+    const name=$("newServiceName").value.trim();
+    const community=$("newServiceCommunity").value.trim();
+
+    if(!name){showFollowError("Saisissez un nom de service.");return;}
+
+    const duplicate=allRefServices().find(s=>normName(s.name)===normName(name));
+    if(duplicate){
+      showFollowError("Ce service existe déjà dans le référentiel. Sélectionnez-le dans la liste.");
+      return;
+    }
+
+    if(!colRef.follow){
+      showFollowError("Ajoute d’abord la colonne Booléen Suivi_actif dans REF_service_utilisateur.");
+      return;
+    }
+
+    const fields={
+      [colRef.service]:name,[colRef.follow]:true,
+      [colRef.rie]:DEFAULTS.rie,[colRef.vpn]:DEFAULTS.vpn,
+      [colRef.passerelle]:DEFAULTS.passerelle,[colRef.mdg]:DEFAULTS.mdg
+    };
+    if(colRef.community&&community) fields[colRef.community]=community;
+
+    try{
+      await grist.docApi.applyUserActions([["AddRecord",REF_TABLE,null,fields]]);
+      closeFollow();
+      await load();
+      const created=allRefServices().find(s=>normName(s.name)===normName(name));
+      if(created){
+        selectedServiceId=created.id;
+        $("serviceSelect").value=String(created.id);
+        renderSelected();
+      }
+    }catch(e){
+      showFollowError("Impossible de créer le service : "+(e?.message||e));
+    }
+  }
+
+  function populateActionForm(serviceId, assigneeIds=[], domainIds=[]){
+    const services=allRefServices().map(s=>({id:s.id,label:s.name}));
+    setSelectOptions($("actService"),services,[Number(serviceId)],false);
+    setSelectOptions($("actAssigne"),tableRows(people,peopleMap),assigneeIds,true);
+    setSelectOptions($("actDomaine"),tableRows(domains,domainMap),domainIds,false);
+  }
+
+  function openCreateAction(){
+    const s=currentService();
+    if(!s) return;
+    actionMode="create";
+    selectedActionId=null;
+    $("actionModalTitle").textContent="Créer une action";
+    populateActionForm(s.id,[],[]);
+    $("actDescription").value="";
+    $("actDebut").value="";
+    $("actEcheance").value="";
+    $("actEvenement").checked=false;
+    $("actionError").classList.add("hidden");
+    $("actionModal").classList.add("open");
+  }
+
+  function openEditAction(id,i){
+    actionMode="edit";
+    selectedActionId=Number(id);
+    $("actionModalTitle").textContent="Modifier l’action";
+    const serviceIds=rawIds(val(actions,colAct.service,i));
+    const assigneeIds=rawIds(val(actions,colAct.assigne,i));
+    const domainIds=rawIds(val(actions,colAct.domaine,i));
+    populateActionForm(serviceIds[0]||selectedServiceId,assigneeIds,domainIds);
+    $("actDescription").value=text(val(actions,colAct.description,i));
+    $("actDebut").value=normalizeDate(val(actions,colAct.debut,i));
+    $("actEcheance").value=normalizeDate(val(actions,colAct.echeance,i));
+    $("actEvenement").checked=boolVal(val(actions,colAct.evenement,i));
+    $("actionError").classList.add("hidden");
+    $("actionModal").classList.add("open");
+  }
+
+  function closeAction(){
+    $("actionModal").classList.remove("open");
+    selectedActionId=null;
+  }
+
+  function assigneeValueFromForm(){
+    const ids=selectedMultiIds($("actAssigne"));
+    const sample=(colAct.assigne&&actions[colAct.assigne]||[]).find(v=>v!==null&&v!==""&&v!==undefined);
+    const isMulti=isEncodedList(sample)||Array.isArray(sample);
+    if(isMulti) return ["L",...ids];
+    return ids.length?ids[0]:null;
+  }
+
+  async function saveAction(){
+    const error=$("actionError");
+    error.classList.add("hidden");
+
+    const serviceId=Number($("actService").value);
+    const domainId=Number($("actDomaine").value);
+    const description=$("actDescription").value.trim();
+
+    if(!serviceId||!description){
+      error.textContent="Service et description sont obligatoires.";
+      error.classList.remove("hidden");
+      return;
+    }
+
+    const fields={};
+    if(colAct.service) fields[colAct.service]=serviceId;
+    if(colAct.description) fields[colAct.description]=description;
+    if(colAct.assigne) fields[colAct.assigne]=assigneeValueFromForm();
+    if(colAct.domaine) fields[colAct.domaine]=Number.isFinite(domainId)?domainId:null;
+    if(colAct.debut) fields[colAct.debut]=dateToGrist($("actDebut").value);
+    if(colAct.echeance) fields[colAct.echeance]=dateToGrist($("actEcheance").value);
+    if(colAct.evenement) fields[colAct.evenement]=$("actEvenement").checked;
+
+    try{
+      if(actionMode==="create"){
+        await addAction(fields);
+      }else{
+        await updateAction(selectedActionId,fields);
+      }
+      closeAction();
+      selectedServiceId=serviceId;
+      await load();
+      $("serviceSelect").value=String(serviceId);
+      renderSelected();
+    }catch(e){
+      error.textContent="Impossible d’enregistrer l’action : "+(e?.message||e);
+      error.classList.remove("hidden");
+    }
+  }
+
+  $("serviceSelect").addEventListener("change",()=>{
+    selectedServiceId=Number($("serviceSelect").value)||null;
+    renderSelected();
+  });
+  $("followBtn").addEventListener("click",openFollow);
+  $("refreshBtn").addEventListener("click",load);
+  $("closeFollow").addEventListener("click",closeFollow);
+  $("followSearch").addEventListener("input",e=>renderFollowResults(e.target.value));
+  $("createAndFollowBtn").addEventListener("click",createAndFollow);
+
+  $("txtRIE").addEventListener("input",()=>scheduleAutosave("RIE"));
+  $("txtVPN").addEventListener("input",()=>scheduleAutosave("VPN"));
+  $("txtPASS").addEventListener("input",()=>scheduleAutosave("PASS"));
+  $("txtMDG").addEventListener("input",()=>scheduleAutosave("MDG"));
+
+  $("createActionBtn").addEventListener("click",openCreateAction);
+  $("closeAction").addEventListener("click",closeAction);
+  $("saveAction").addEventListener("click",saveAction);
+
+  $("followModal").addEventListener("click",e=>{if(e.target===$("followModal"))closeFollow();});
+  $("actionModal").addEventListener("click",e=>{if(e.target===$("actionModal"))closeAction();});
+
+  grist.ready({requiredAccess:"full"});
+  load().catch(e=>{
+    $("setupNotice").textContent="Erreur de chargement : "+(e?.message||e);
+    $("setupNotice").classList.remove("hidden");
+  });
+})();
+</script>
+</body>
+</html>
